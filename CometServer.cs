@@ -18,7 +18,7 @@ namespace Kesco.Lib.Web.Comet
     /// <param name="sender">Инициатор вызова</param>
     public delegate void NotifyClientsEventHandler(CometAsyncState state, string clientGuid = null, int status = 0);
 
-    public delegate void NotifySendMessageEventHandler(string id, string clientGuid, string message);
+    public delegate void NotifySendMessageEventHandler(string id, string name, string clientGuid, string message);
 
     // Собственно, серверная часть
     public static class CometServer
@@ -43,10 +43,10 @@ namespace Kesco.Lib.Web.Comet
 
         public static event NotifySendMessageEventHandler NotifyMessages;
 
-        public static void OnNotifyMessage(string id, string clientGuid, string message)
+        public static void OnNotifyMessage(string id, string name, string clientGuid, string message)
         {
             if (NotifyMessages != null)
-                NotifyMessages(id, clientGuid, message);
+                NotifyMessages(id, name, clientGuid, message);
         }
 
         /// <summary>
@@ -261,6 +261,7 @@ namespace Kesco.Lib.Web.Comet
 
                     clientState.IsCompleted = false;
                     clientState.Id = state.Id;
+                    clientState.Name = state.Name;
                     clientState.IsEditable = state.IsEditable;
                     clientState.CurrentContext = state.CurrentContext;
                     clientState.ExtraData = state.ExtraData;

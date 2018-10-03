@@ -26,6 +26,7 @@ namespace Kesco.Lib.Web.Comet
             var message = "";
             var isEditable = false;
             var id = 0;
+            var name = "";
 
             try
             {
@@ -41,10 +42,12 @@ namespace Kesco.Lib.Web.Comet
                 guid = state.CurrentContext.Request.QueryString["guid"];
                 isEditable = state.CurrentContext.Request.QueryString["Editable"] == "true";
                 id = int.Parse(state.CurrentContext.Request.QueryString["id"] ?? "0");
+                name = state.CurrentContext.Request.QueryString["name"];
             }
 
             state.IsEditable = isEditable;
             state.Id = id;
+            state.Name = name;
 
             switch (command)
             {
@@ -79,7 +82,7 @@ namespace Kesco.Lib.Web.Comet
                     }
 
                     state.CompleteRequest();
-                    CometServer.OnNotifyMessage(id.ToString(), guid, message);
+                    CometServer.OnNotifyMessage(id.ToString(), name, guid, message);
                     break;
                 default:
                     // При реконнекте клиента

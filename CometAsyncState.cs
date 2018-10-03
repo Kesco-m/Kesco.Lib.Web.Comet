@@ -213,6 +213,11 @@ namespace Kesco.Lib.Web.Comet
         public int Id { get; set; }
 
         /// <summary>
+        /// Название сущности
+        /// </summary>
+        public string Name { get; set; }
+
+        /// <summary>
         ///     Возвращает определенный пользователем объект, который определяет или содержит в себе сведения об асинхронной
         ///     операции.
         /// </summary>
