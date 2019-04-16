@@ -1,25 +1,23 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Web;
+﻿using System.Web;
 
 namespace Kesco.Lib.Web.Comet
 {
     // Класс, описывающий одно сообщение от клиента и метод его сериализации
     public class CometMessage
     {
-        public string ClientGuid;
-        public string Message;
-        public int Status;
-        public string UserName;
-        public bool IsV4Script = false;
+        public string ClientGuid { get; set; }
+        public string Message { get; set; }
+        public int Status { get; set; }
+        public int Reload { get; set; }
+        public string UserName { get; set; }
+        public bool IsV4Script { get; set; }
 
         public string Serialize()
         {
             return "{'user': '" + HttpUtility.JavaScriptStringEncode(UserName) +
                    "', 'message': '" + HttpUtility.JavaScriptStringEncode(Message) +
                    "', 'status': '" + Status +
+                   "', 'reload': '" + Reload +
                    "', 'isV4Script': '" + (IsV4Script ? 1 : 0) +
                    "', 'guid': '" + ClientGuid + "'}";
         }

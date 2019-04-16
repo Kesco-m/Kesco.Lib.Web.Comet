@@ -1,10 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Web;
-using System.Collections.Generic;
 using System.Web.UI;
-using System.IO;
-using System.Text;
 
 namespace Kesco.Lib.Web.Comet
 {
@@ -13,6 +11,11 @@ namespace Kesco.Lib.Web.Comet
     /// </summary>
     public class CometAsyncState : IAsyncResult
     {
+        /// <summary>
+        ///     Максимальное количество предпринимаемых попыток отправки сообщений
+        /// </summary>
+        public const int MaxTries = 3;
+
         /// <summary>
         ///     Асинхронный колбек
         /// </summary>
@@ -29,34 +32,23 @@ namespace Kesco.Lib.Web.Comet
         public object ExtraData;
 
         /// <summary>
-        /// Максимальное количество предпринимаемых попыток отправки сообщений
-        /// </summary>
-        public const int MaxTries = 3;
-
-        /// <summary>
-        /// Количество оставшихся попыток отправки сообщений
-        /// </summary>
-        public int Tries;
-
-        /// <summary>
-        /// Очередь сообщений для отправки сообщений клиенту
+        ///     Очередь сообщений для отправки сообщений клиенту
         /// </summary>
         public Queue<CometMessage> Messages;
 
         public Page Page;
 
-        /*
-        private static void AddMessage(FileStream fs, CometMessage m, string g)
-        {
-            lock (fs)
-            {
-                byte[] msg = new UTF8Encoding(true).GetBytes(Environment.NewLine + m.Serialize() + g + Environment.NewLine);
-                fs.Write(msg, 0, msg.Length);
-            }
-        }
-        */
+        /// <summary>
+        ///     Количество оставшихся попыток отправки сообщений
+        /// </summary>
+        public int Tries;
 
-        // Конструктор
+        /// <summary>
+        ///     Конструктор
+        /// </summary>
+        /// <param name="context">Контекст выполнения</param>
+        /// <param name="callback">Асинхронный обработчик</param>
+        /// <param name="data">Обрабатывамые данные</param>
         public CometAsyncState(HttpContext context, AsyncCallback callback, object data)
         {
             CurrentContext = context;
@@ -81,7 +73,6 @@ namespace Kesco.Lib.Web.Comet
             // и вызовем callback
             IsCompleted = true;
             if (AsyncCallback != null)
-            {
                 try
                 {
                     AsyncCallback(this);
@@ -89,11 +80,10 @@ namespace Kesco.Lib.Web.Comet
                 catch
                 {
                 }
-            }
         }
 
         /// <summary>
-        /// Добавить сообщение в очередь
+        ///     Добавить сообщение в очередь
         /// </summary>
         /// <param name="m"></param>
         public int AddMessage(CometMessage m)
@@ -104,18 +94,14 @@ namespace Kesco.Lib.Web.Comet
             if (null == Messages)
                 Messages = new Queue<CometMessage>();
 
-            if (Messages.Count < 1)
-            {
-                Tries = CometAsyncState.MaxTries;
-            }
+            if (Messages.Count < 1) Tries = MaxTries;
 
             //Если в очереди уже есть сообщение для обновления списка пользователей, то имеющееся сообщение можно просто обновить
 
             if (m.isUserList())
             {
-                Queue<CometMessage>.Enumerator en = Messages.GetEnumerator();
+                var en = Messages.GetEnumerator();
                 while (en.MoveNext())
-                {
                     if (en.Current.isUserList())
                     {
                         //lock (CometServer.fs)
@@ -127,7 +113,6 @@ namespace Kesco.Lib.Web.Comet
                         en.Current.Message = m.Message;
                         return Messages.Count;
                     }
-                }
             }
 
             //AddMessage(CometServer.fs, m, ClientGuid);
@@ -137,26 +122,29 @@ namespace Kesco.Lib.Web.Comet
         }
 
         /// <summary>
-        /// Отправка первого сообщения из очереди сообщений
+        ///     Отправка первого сообщения из очереди сообщений
         /// </summary>
-        /// <param name="fTest">Если True, то метод был вызван после окончания ожидания, в случае неудачи следует уменьшить количество оставшихся попыток</param>
+        /// <param name="fTest">
+        ///     Если True, то метод был вызван после окончания ожидания, в случае неудачи следует уменьшить
+        ///     количество оставшихся попыток
+        /// </param>
         public void SendMessage(bool fTest)
         {
             if (Messages == null) return;
             if (Messages.Count < 1) return;
 
-            bool fFail = true;
+            var fFail = true;
             if (CurrentContext != null && CurrentContext.Session != null)
             {
-                CometMessage message = Messages.Peek();
+                var message = Messages.Peek();
 
                 try
                 {
                     // пишем в выходной поток текущее сообщение
                     CurrentContext.Response.Write(message.IsV4Script
-                          ? message.Message
-                          : message.Serialize());
-                    
+                        ? message.Message
+                        : message.Serialize());
+
                     Messages.Dequeue();
                     fFail = false;
 
@@ -173,11 +161,7 @@ namespace Kesco.Lib.Web.Comet
             CompleteRequest();
             CurrentContext = null;
 
-            if (fFail && fTest && --Tries < 1)
-            {
-                //Клиент будет отсоединен
-                Messages = null;
-            }
+            if (fFail && fTest && --Tries < 1) Messages = null;
         }
 
         #region IAsyncResult Members
@@ -186,7 +170,7 @@ namespace Kesco.Lib.Web.Comet
         ///     Заглушка для интерфейса IAsyncResult
         ///     Возвращает значение, показывающее, синхронно ли закончилась асинхронная операция.
         /// </summary>
-        public Boolean CompletedSynchronously
+        public bool CompletedSynchronously
         {
             get { return false; }
         }
@@ -208,12 +192,12 @@ namespace Kesco.Lib.Web.Comet
         public DateTime Start { get; set; }
 
         /// <summary>
-        /// Идентификатор сущности
+        ///     Идентификатор сущности
         /// </summary>
         public int Id { get; set; }
 
         /// <summary>
-        /// Название сущности
+        ///     Название сущности
         /// </summary>
         public string Name { get; set; }
 

@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Threading;
 using System.Web;
 using System.Web.Script.Serialization;
 using System.Web.SessionState;
@@ -9,12 +8,12 @@ using System.Web.SessionState;
 namespace Kesco.Lib.Web.Comet
 {
     /// <summary>
-    /// Асинхронный хендлер для обработки клиентских запросов, поддерживает постоянное соединение с IIS
+    ///     Асинхронный хендлер для обработки клиентских запросов, поддерживает постоянное соединение с IIS
     /// </summary>
     public class CometAsyncHandler : IHttpAsyncHandler, IReadOnlySessionState
     {
         // Основная функция рабочего потока
-        private void RequestWorker(Object obj)
+        private void RequestWorker(object obj)
         {
             // obj - второй параметр при вызове ThreadPool.QueueUserWorkItem()
             var state = obj as CometAsyncState;
@@ -68,7 +67,11 @@ namespace Kesco.Lib.Web.Comet
                 //        CometServer.UpdateClient(state, guid, true);
                 //    break;
                 case "update":
-                    CometServer.PushMessage(new CometMessage { Message = "", UserName = "", Status = 0, ClientGuid = guid }, guid);
+
+                    CometServer.WriteLog("RequestWorkerDefault: command -> " + command + " " + guid);
+
+                    CometServer.PushMessage(
+                        new CometMessage {Message = "", UserName = "", Status = 0, ClientGuid = guid}, guid);
                     state.CompleteRequest();
                     break;
                 case "send":
@@ -85,11 +88,10 @@ namespace Kesco.Lib.Web.Comet
                     CometServer.OnNotifyMessage(id.ToString(), name, guid, message);
                     break;
                 default:
+                    CometServer.WriteLog("RequestWorkerDefault: command -> " + command + " " + guid);
+
                     // При реконнекте клиента
-                    if (guid != null)
-                    {
-                        CometServer.UpdateClient(state, guid);
-                    }
+                    if (guid != null) CometServer.UpdateClient(state, guid);
                     break;
             }
 
@@ -99,7 +101,7 @@ namespace Kesco.Lib.Web.Comet
 
         #region IHttpAsyncHandler Members
 
-        public IAsyncResult BeginProcessRequest(HttpContext ctx, AsyncCallback cb, Object obj)
+        public IAsyncResult BeginProcessRequest(HttpContext ctx, AsyncCallback cb, object obj)
         {
             // Готовим объект для передачи его в QueueUserWorkItem
             var currentAsyncState = new CometAsyncState(ctx, cb, obj);
@@ -132,4 +134,3 @@ namespace Kesco.Lib.Web.Comet
         #endregion
     }
 }
-
