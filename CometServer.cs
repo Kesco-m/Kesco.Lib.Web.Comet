@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -36,26 +35,18 @@ namespace Kesco.Lib.Web.Comet
         private static Thread _procesor;
 
         // вспомогательный объект для блокировки ресурсов многопоточного приложения
-        private static readonly object _lock = new object();
 
         // Список, хранящий состояние всех подключенных клиентов
-        private static readonly List<CometAsyncState> _clientStateList = new List<CometAsyncState>();
 
         /// <summary>
         ///     Объект синхронизации потоков
         /// </summary>
-        public static object SyncLock
-        {
-            get { return _lock; }
-        }
+        public static object SyncLock { get; } = new object();
 
         /// <summary>
         ///     Подключенные клиенты
         /// </summary>
-        public static List<CometAsyncState> Connections
-        {
-            get { return _clientStateList; }
-        }
+        public static List<CometAsyncState> Connections { get; } = new List<CometAsyncState>();
 
         /// <summary>
         ///     Функция записи в лог
@@ -153,7 +144,9 @@ namespace Kesco.Lib.Web.Comet
         /// <param name="filter">Фильтр клиентов</param>
         public static void PushMessage(CometMessage message, Predicate<CometAsyncState> filter)
         {
+            WriteLog($"Start PushMessage -> message: {message.Message}");
             MsgProcessor.AddMessage(message, filter);
+            WriteLog("End PushMessage");
         }
 
         /// <summary>
@@ -161,8 +154,10 @@ namespace Kesco.Lib.Web.Comet
         /// </summary>
         public static void Start()
         {
+            WriteLog("Start CometServer");
             _procesor = new Thread(MsgProcessor.Processing);
             _procesor.Start();
+            WriteLog("End Start CometServer");
         }
 
         /// <summary>
@@ -178,10 +173,10 @@ namespace Kesco.Lib.Web.Comet
         /// </summary>
         public static void Stop()
         {
-            lock (_lock)
+            lock (SyncLock)
             {
-                WriteLog("Stop:->" + _clientStateList.Count);
-                _clientStateList.ForEach(delegate(CometAsyncState cas)
+                WriteLog("Stop CometServer:->" + Connections.Count);
+                Connections.ForEach(delegate(CometAsyncState cas)
                 {
                     PushMessage(
                         new CometMessage
@@ -193,11 +188,12 @@ namespace Kesco.Lib.Web.Comet
                     cas.CompleteRequest();
                     WriteLog("STOP APPLICATION -> " + cas.ClientGuid);
                 });
-                _clientStateList.Clear();
+                Connections.Clear();
             }
 
             MsgProcessor.Stop();
             _procesor.Join();
+            WriteLog("End Stop CometServer");
         }
 
         /// <summary>
@@ -211,12 +207,13 @@ namespace Kesco.Lib.Web.Comet
         /// <param name="firstConnect">В первый ли раз подключается клиент</param>
         public static void UpdateClient(CometAsyncState state, string clientGuid, bool firstConnect = false)
         {
-            WriteLog("UpdateClient -> " + clientGuid);
+            WriteLog(
+                $"Start UpdateClient CometAsyncState: {state.ClientGuid} clientGuid: {clientGuid} firstConnect: {firstConnect}");
             var existState = false;
-            lock (_lock)
+            lock (SyncLock)
             {
                 // ищем клиента в списке по его гуиду
-                var clientState = _clientStateList.FirstOrDefault(s => s.ClientGuid == clientGuid);
+                var clientState = Connections.FirstOrDefault(s => s.ClientGuid == clientGuid);
                 if (clientState != null)
                 {
                     // и если он нашелся, то обновляем все его параметры
@@ -227,6 +224,7 @@ namespace Kesco.Lib.Web.Comet
                     clientState.Id = state.Id;
                     clientState.Name = state.Name;
                     clientState.IsEditable = state.IsEditable;
+                    //clientState.IsModified = state.IsModified;
                     clientState.CurrentContext = state.CurrentContext;
                     clientState.ExtraData = state.ExtraData;
                     clientState.AsyncCallback = state.AsyncCallback;
@@ -241,7 +239,7 @@ namespace Kesco.Lib.Web.Comet
                 {
                     state.ClientGuid = clientGuid;
                     RegisterClient(state, false);
-                    WriteLog("-> LOST CONNECTION  UnregisterClient by state -> " + clientGuid);
+                    WriteLog($"-> LOST CONNECTION  UnregisterClient by state -> ClientGuid: {clientGuid}");
                     UnregisterClient(state, true);
                 }
                 else
@@ -249,31 +247,33 @@ namespace Kesco.Lib.Web.Comet
                     throw new Exception("Отсутствует объект state! Ошибка организации вызова клиента!");
                 }
             }
+
+            WriteLog("End UpdateClient");
         }
 
         /// <summary>
-        ///     Очистка простроченных соединенй
+        ///     Очистка просроченных соединенй
         /// </summary>
         public static void ClearExpiredConnections()
         {
-            WriteLog("Start ClearExpiredConnections, count=" + _clientStateList.Count);
+            WriteLog("Start ClearExpiredConnections, check count=" + Connections.Count);
 
             var listClientGuid = new List<string>();
-            lock (_lock)
+            lock (SyncLock)
             {
                 var expiredDate = DateTime.Now;
-                for (var i = _clientStateList.Count - 1; i > -1; i--)
+                for (var i = Connections.Count - 1; i > -1; i--)
                 {
-                    var clientState = _clientStateList[i];
+                    var clientState = Connections[i];
                     var workTime = expiredDate - clientState.Start;
 
 
-                    WriteLog("Check " + clientState.ClientGuid + " time work ->" + workTime);
+                    WriteLog($"Check ClientGuid: {clientState.ClientGuid} WorkTime:{workTime}");
 
                     if (!(workTime.TotalMinutes > 15)) continue;
 
 
-                    WriteLog(clientState.ClientGuid + " - unregister");
+                    WriteLog($"Unregister -> ClientGuid: {clientState.ClientGuid}");
 
                     listClientGuid.Add(clientState.ClientGuid);
 
@@ -287,36 +287,45 @@ namespace Kesco.Lib.Web.Comet
                         ClientGuid = clientState.ClientGuid
                     });
 
-                    _clientStateList.RemoveAt(i);
+                    Connections.RemoveAt(i);
                 }
             }
 
             foreach (var x in listClientGuid) OnNotifyClients(null, x, 1);
+
+            WriteLog("End ClearExpiredConnections");
         }
 
         // Регистрация клиента
         public static void RegisterClient(CometAsyncState state, bool notifyClients = true)
         {
-            lock (_lock)
+            WriteLog("+++++++++++++++++++++++++++++++++++++++++++++++++++++");
+            WriteLog("Start RegisterClient by CometAsyncState -> " + state.ClientGuid + " notifyClients ->" +
+                     notifyClients);
+            lock (SyncLock)
             {
                 // Присваиваем гуид и добавляем в список
-                if (!_clientStateList.Exists(x => x.ClientGuid == state.ClientGuid))
-                    _clientStateList.Add(state);
+                if (!Connections.Exists(x => x.ClientGuid == state.ClientGuid))
+                    Connections.Add(state);
 
                 WriteLog("EXISTS CONNECTIONS:");
 
                 foreach (var clientState in Connections)
-                    WriteLog("     ->" + clientState.ClientGuid + " " + clientState.Tries + " " +
-                             clientState.Start.ToLongTimeString());
+                    WriteLog(
+                        $"     -> ClientGuid: {clientState.ClientGuid} Tries: {clientState.Tries} StartSession: {clientState.Start.ToLongTimeString()}");
             }
 
             if (notifyClients)
                 OnNotifyClients(state, state.ClientGuid);
+
+            WriteLog(
+                $"End RegisterClient by CometAsyncState -> ClientGuid:{state.ClientGuid} NotifyClients: {notifyClients}");
         }
 
         // Разрегистрация клиента
         public static void UnregisterClient(CometAsyncState client, bool reload = false)
         {
+            WriteLog($"Start UnregisterClient by CometAsyncState -> ClientGuid: {client.ClientGuid} Reload: {reload}");
             var m = new CometMessage
             {
                 Message = "unregister",
@@ -326,7 +335,7 @@ namespace Kesco.Lib.Web.Comet
                 ClientGuid = client.ClientGuid
             };
 
-            lock (_lock)
+            lock (SyncLock)
             {
                 //Очередь сообщений очищаем, клиент уже не хочет ничего принимать
                 if (null != client.Messages)
@@ -357,10 +366,10 @@ namespace Kesco.Lib.Web.Comet
                 ClientGuid = clientGuid
             };
 
-            lock (_lock)
+            lock (SyncLock)
             {
                 // Клиент будет удален из списка после отправки последнего сообщения ему
-                var client = _clientStateList.FirstOrDefault(x => x.ClientGuid == clientGuid);
+                var client = Connections.FirstOrDefault(x => x.ClientGuid == clientGuid);
 
                 if (client != null)
                 {
@@ -379,6 +388,7 @@ namespace Kesco.Lib.Web.Comet
 
             OnNotifyClients(null, clientGuid, 1);
             Process();
+            WriteLog("End UnregisterClient by Guid -> " + clientGuid);
         }
 
         /// <summary>
@@ -401,12 +411,15 @@ namespace Kesco.Lib.Web.Comet
             /// <param name="filter">Фильтр для определения клиентов</param>
             public static void AddMessage(CometMessage m, Predicate<CometAsyncState> filter)
             {
+                WriteLog("Start AddMessage to clients by filter");
                 lock (SyncLock)
                 {
                     foreach (var clientState in Connections)
                         if (filter(clientState))
                             clientState.AddMessage(m);
                 }
+
+                WriteLog("End AddMessage to clients by filter");
             }
 
             /// <summary>
@@ -416,6 +429,7 @@ namespace Kesco.Lib.Web.Comet
             /// <param name="clientGuid">IP- страницы</param>
             public static void AddMessage(CometMessage m, string clientGuid = "")
             {
+                WriteLog("Start AddMessage to clients by guid [" + clientGuid + "]");
                 if (clientGuid == "")
                 {
                     Predicate<CometAsyncState> f = client =>
@@ -430,6 +444,8 @@ namespace Kesco.Lib.Web.Comet
                     if (client != null)
                         client.AddMessage(m);
                 }
+
+                WriteLog("End AddMessage to clients by guid [" + clientGuid + "]");
             }
 
             /// <summary>
@@ -438,6 +454,7 @@ namespace Kesco.Lib.Web.Comet
             /// <param name="obj">Объект, заглукшка</param>
             public static void Processing(object obj)
             {
+                WriteLog("Start Processing messages");
                 while (!fStop)
                 {
                     var result = WaitHandle.WaitAny(waitHandles, timeout);
@@ -449,7 +466,7 @@ namespace Kesco.Lib.Web.Comet
                     {
                         foreach (var clientState in Connections)
                         {
-                            WriteLog("SEND MESSAGE");
+                            WriteLog($"Check client message -> ClientGuid: {clientState.ClientGuid}");
                             clientState.SendMessage(WaitHandle.WaitTimeout == result);
                         }
 
@@ -461,12 +478,26 @@ namespace Kesco.Lib.Web.Comet
                         {
                             var sb = new StringBuilder();
 
+                            if (Connections.Count > 0)
+                            {
+                                sb.Append(" EXISTS CONNECTIONS AFTER PROCESSING MESSAGES:");
+                                sb.Append(Environment.NewLine);
+                            }
+
                             foreach (var clientState in Connections)
-                                sb.Append(" " + clientState.ClientGuid + " " + clientState.Tries + " " +
-                                          clientState.Start.ToLongTimeString());
+                            {
+                                sb.Append(
+                                    $" -> ClientGuid: {clientState.ClientGuid} Tries: {clientState.Tries} clientState.Start: {clientState.Start.ToLongTimeString()}");
+                                sb.Append(Environment.NewLine);
+                            }
+
+                            if (sb.Length > 0)
+                                WriteLog(sb.ToString());
                         }
                     }
                 }
+
+                WriteLog("End Processing messages");
             }
 
             /// <summary>
@@ -474,15 +505,19 @@ namespace Kesco.Lib.Web.Comet
             /// </summary>
             public static void TryNow()
             {
+                WriteLog("Start Event TryNow");
                 msgEvent.Set();
+                WriteLog("End Event TryNow");
             }
 
             /// <summary>
-            ///     Останвока события
+            ///     Остановка события
             /// </summary>
             public static void Stop()
             {
+                WriteLog("Start stop event");
                 stopEvent.Set();
+                WriteLog("End stop event");
             }
         }
     }

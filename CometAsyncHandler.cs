@@ -122,10 +122,7 @@ namespace Kesco.Lib.Web.Comet
 
         // IHttpHandler Members - просто пустые заглушки, так как нам не требуется реализация синхронных методов
 
-        public bool IsReusable
-        {
-            get { return true; }
-        }
+        public bool IsReusable => true;
 
         public void ProcessRequest(HttpContext context)
         {

@@ -56,6 +56,7 @@ namespace Kesco.Lib.Web.Comet
             ExtraData = data;
             IsCompleted = false;
             IsEditable = true;
+            IsModified = false;
             Start = DateTime.Now;
 
             Tries = MaxTries;
@@ -71,6 +72,7 @@ namespace Kesco.Lib.Web.Comet
         {
             // При завершении запроса просто выставим флаг что он завершен
             // и вызовем callback
+            CometServer.WriteLog("Start CompleteRequest");
             IsCompleted = true;
             if (AsyncCallback != null)
                 try
@@ -80,6 +82,8 @@ namespace Kesco.Lib.Web.Comet
                 catch
                 {
                 }
+
+            CometServer.WriteLog("End CompleteRequest");
         }
 
         /// <summary>
@@ -90,6 +94,7 @@ namespace Kesco.Lib.Web.Comet
         {
             //Клиент уже разрегистрирован
             if (Tries < 1) return -1;
+            CometServer.WriteLog("Start AddMessage");
 
             if (null == Messages)
                 Messages = new Queue<CometMessage>();
@@ -104,20 +109,15 @@ namespace Kesco.Lib.Web.Comet
                 while (en.MoveNext())
                     if (en.Current.isUserList())
                     {
-                        //lock (CometServer.fs)
-                        //{
-                        //    byte[] g = new UTF8Encoding(true).GetBytes(Environment.NewLine + "Skip Message" + m.Serialize());
-                        //    CometServer.fs.Write(g, 0, g.Length);
-                        //}
-
+                        CometServer.WriteLog($"AddMessage: {m.Message}");
                         en.Current.Message = m.Message;
                         return Messages.Count;
                     }
             }
 
-            //AddMessage(CometServer.fs, m, ClientGuid);
-
+            CometServer.WriteLog($"AddMessage: {m.Message}");
             Messages.Enqueue(m);
+            CometServer.WriteLog("End AddMessage");
             return Messages.Count;
         }
 
@@ -130,8 +130,19 @@ namespace Kesco.Lib.Web.Comet
         /// </param>
         public void SendMessage(bool fTest)
         {
-            if (Messages == null) return;
-            if (Messages.Count < 1) return;
+            CometServer.WriteLog("Start SendMessage");
+            if (Messages == null)
+            {
+                CometServer.WriteLog("End SendMessage: Messages == null");
+                return;
+            }
+
+
+            if (Messages.Count < 1)
+            {
+                CometServer.WriteLog("End SendMessage: Messages.Count < 1");
+                return;
+            }
 
             var fFail = true;
             if (CurrentContext != null && CurrentContext.Session != null)
@@ -141,6 +152,7 @@ namespace Kesco.Lib.Web.Comet
                 try
                 {
                     // пишем в выходной поток текущее сообщение
+                    CometServer.WriteLog($"SendMessage: {message.Message}");
                     CurrentContext.Response.Write(message.IsV4Script
                         ? message.Message
                         : message.Serialize());
@@ -162,6 +174,7 @@ namespace Kesco.Lib.Web.Comet
             CurrentContext = null;
 
             if (fFail && fTest && --Tries < 1) Messages = null;
+            CometServer.WriteLog("End SendMessage");
         }
 
         #region IAsyncResult Members
@@ -170,10 +183,7 @@ namespace Kesco.Lib.Web.Comet
         ///     Заглушка для интерфейса IAsyncResult
         ///     Возвращает значение, показывающее, синхронно ли закончилась асинхронная операция.
         /// </summary>
-        public bool CompletedSynchronously
-        {
-            get { return false; }
-        }
+        public bool CompletedSynchronously => false;
 
         /// <summary>
         ///     Признак завершения запроса
@@ -185,6 +195,11 @@ namespace Kesco.Lib.Web.Comet
         ///     Объект редактируется или просматривается
         /// </summary>
         public bool IsEditable { get; set; }
+
+        /// <summary>
+        ///     Объект отредактирован
+        /// </summary>
+        public bool IsModified { get; set; }
 
         /// <summary>
         ///     Время последнего обновления Long-Polling соединения
@@ -205,18 +220,12 @@ namespace Kesco.Lib.Web.Comet
         ///     Возвращает определенный пользователем объект, который определяет или содержит в себе сведения об асинхронной
         ///     операции.
         /// </summary>
-        public object AsyncState
-        {
-            get { return ExtraData; }
-        }
+        public object AsyncState => ExtraData;
 
         /// <summary>
         ///     Возвращает дескриптор WaitHandle, используемый для ожидания завершения асинхронной операции.
         /// </summary>
-        public WaitHandle AsyncWaitHandle
-        {
-            get { return new ManualResetEvent(false); }
-        }
+        public WaitHandle AsyncWaitHandle => new ManualResetEvent(false);
 
         #endregion
     }
